@@ -1,10 +1,3 @@
--- ============================================================
---   Vehicle Modifier (formerly MotoScript)
---   by Lucas :P
---   Full-screen loading -> centered question -> main UI
---   Resizable main panel, grey title, less wide
---   + Teleport Up button
--- ============================================================
 
 local MEM_FOLDER = "MotoScript"
 local MEM_FILE   = MEM_FOLDER .. "/Simple.json"
@@ -28,13 +21,11 @@ local MEM = LoadMem()
 local function M(k, d) local v=MEM[k]; return v~=nil and v or d end
 local function S(k,v)  MEM[k]=v; SaveMem(MEM) end
 
--- ======================== SERVICES ========================
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer      = Players.LocalPlayer
 
--- ======================== FULL-SCREEN BLACK BACKGROUND ========================
 local blackGui = Instance.new("ScreenGui")
 blackGui.Name = "BlackScreen"
 blackGui.ResetOnSpawn = false
@@ -49,7 +40,6 @@ blackBg.BackgroundTransparency = 0
 blackBg.BorderSizePixel = 0
 blackBg.Parent = blackGui
 
--- ======================== LOADING TEXT ========================
 local loadingText = Instance.new("TextLabel")
 loadingText.Size = UDim2.new(0, 300, 0, 60)
 loadingText.Position = UDim2.new(0.5, -150, 0.5, -30)
@@ -74,7 +64,6 @@ task.wait(4)
 task.cancel(dotTimer)
 loadingText:Destroy()
 
--- ======================== QUESTION UI (centered, pure black frame) ========================
 local questionFrame = Instance.new("Frame")
 questionFrame.Size = UDim2.new(0, 400, 0, 160)
 questionFrame.Position = UDim2.new(0.5, -200, 0.5, -80)
@@ -142,7 +131,6 @@ submitBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- ======================== MAIN SCRIPT (Vehicle Modifier) ========================
 function LoadMainScript()
 	local speedCapEnabled   = M("speedCapEnabled",   false)
 	local speedCapValue     = M("speedCapValue",      150)
@@ -231,7 +219,6 @@ function LoadMainScript()
 		s.Color = color or BORDER; s.Thickness = thick or 1
 	end
 
-	-- ======================== SPEED HUD (unchanged) ========================
 	local HUD = Instance.new("Frame")
 	HUD.Name            = "SpeedHUD"
 	HUD.Size            = UDim2.new(0, 160, 0, 90)
@@ -371,7 +358,6 @@ function LoadMainScript()
 		end)
 	end
 
-	-- ======================== MAIN PANEL (less wide, resizable) ========================
 	local Panel = Instance.new("Frame")
 	Panel.Name            = "MainPanel"
 	Panel.Size            = UDim2.new(0, 600, 0, 195)   -- reduced width from 720 to 600
