@@ -131,6 +131,7 @@ submitBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- ======================== MAIN SCRIPT (Vehicle Modifier) ========================
 function LoadMainScript()
 	local speedCapEnabled   = M("speedCapEnabled",   false)
 	local speedCapValue     = M("speedCapValue",      150)
@@ -219,6 +220,7 @@ function LoadMainScript()
 		s.Color = color or BORDER; s.Thickness = thick or 1
 	end
 
+	-- ======================== SPEED HUD (unchanged) ========================
 	local HUD = Instance.new("Frame")
 	HUD.Name            = "SpeedHUD"
 	HUD.Size            = UDim2.new(0, 160, 0, 90)
@@ -358,6 +360,7 @@ function LoadMainScript()
 		end)
 	end
 
+	-- ======================== MAIN PANEL (less wide, resizable) ========================
 	local Panel = Instance.new("Frame")
 	Panel.Name            = "MainPanel"
 	Panel.Size            = UDim2.new(0, 600, 0, 195)   -- reduced width from 720 to 600
