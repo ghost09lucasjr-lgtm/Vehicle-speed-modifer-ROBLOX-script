@@ -3,4 +3,4 @@ i was kinda bored so i made this script that changes any vehicle's speed, its un
 thanks byeeeee.
 
 
-Update 2: Small minor changes, accelerator added, UP buttton so you can get unstuck from stuff i guess, better UI, Fixed bugs, better accuracey
+Update 2: Small minor changes, accelerator added, UP buttton so you can get unstuck from stuff i guess, better UI, Fixed bugs, better accuracy
