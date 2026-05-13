@@ -1,0 +1,1 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/Vehicle-speed-modifer-ROBLOX-script/refs/heads/main/script.lua"))()
