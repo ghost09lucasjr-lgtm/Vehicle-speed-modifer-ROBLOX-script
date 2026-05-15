@@ -1,0 +1,241 @@
+-- ===== XENO ZOOM SCRIPT (Hold Z to Zoom | Hold X to Set FOV | Insert Toggle UI | C Reset) =====
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- Cleanup old instances
+for _, gui in pairs(player.PlayerGui:GetChildren()) do
+	if gui.Name:find("Zoom") or gui.Name == "ExtendedFOVGui" then
+		pcall(function() gui:Destroy() end)
+	end
+end
+
+if _G.ZoomScriptRunning then
+	if _G.ZoomConnections then
+		for _, conn in ipairs(_G.ZoomConnections) do pcall(function() conn:Disconnect() end) end
+	end
+end
+
+_G.ZoomScriptRunning = true
+_G.ZoomConnections = {}
+
+-- Settings
+local scrollStep = 5
+local slowModifier = 0.2
+local fastModifier = 5
+local holdingZ, holdingX = false, false
+local selectedFov = 70
+local zoomFov = 70
+local currentFov = 70
+local MAX_ROBLOX_FOV = 120
+
+-- Extended FOV Viewport (for FOV > 120)
+local fovGui = Instance.new("ScreenGui")
+fovGui.Name = "ExtendedFOVGui"
+fovGui.IgnoreGuiInset = true
+fovGui.DisplayOrder = 999998
+fovGui.Parent = player.PlayerGui
+
+local viewportFrame = Instance.new("ViewportFrame")
+viewportFrame.Size = UDim2.new(1, 0, 1, 0)
+viewportFrame.Position = UDim2.new(0, 0, 0, 0)
+viewportFrame.BackgroundTransparency = 1
+viewportFrame.CurrentCamera = camera
+viewportFrame.Visible = false
+viewportFrame.Parent = fovGui
+
+local function updateFOV(targetFov)
+	if targetFov <= MAX_ROBLOX_FOV then
+		camera.FieldOfView = targetFov
+		viewportFrame.Visible = false
+	else
+		camera.FieldOfView = MAX_ROBLOX_FOV
+		viewportFrame.Visible = true
+		viewportFrame.CurrentCamera = camera
+		
+		local fovMultiplier = targetFov / MAX_ROBLOX_FOV
+		viewportFrame.Size = UDim2.new(fovMultiplier, 0, fovMultiplier, 0)
+		viewportFrame.Position = UDim2.new(0.5 - fovMultiplier/2, 0, 0.5 - fovMultiplier/2, 0)
+	end
+end
+
+-- Keybinds
+local Keybinds = {
+	ZoomHold = Enum.KeyCode.Z,
+	SetFovHold = Enum.KeyCode.X,
+	ToggleUI = Enum.KeyCode.Insert,
+	ResetFov = Enum.KeyCode.C
+}
+local waitingForBind = nil
+
+-- GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "ZoomMiniUI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 999999
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+gui.Parent = player.PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(300, 250)
+frame.Position = UDim2.fromOffset(50, 50)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.ClipsDescendants = true
+frame.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 15)
+corner.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.BackgroundTransparency = 1
+title.Text = "Zoom Controller"
+title.Font = Enum.Font.GothamBlack
+title.TextSize = 24
+title.TextColor3 = Color3.fromRGB(150, 200, 255)
+title.Parent = frame
+
+local fovLabel = Instance.new("TextLabel")
+fovLabel.Size = UDim2.new(1, -20, 0, 22)
+fovLabel.Position = UDim2.new(0, 10, 0, 45)
+fovLabel.BackgroundTransparency = 1
+fovLabel.TextXAlignment = Enum.TextXAlignment.Left
+fovLabel.Font = Enum.Font.Gotham
+fovLabel.TextSize = 15
+fovLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+fovLabel.Parent = frame
+
+-- Keybind rows
+local bindButtons = {}
+local startY, spacing = 75, 38
+
+local function createBindRow(text, bindName, y)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.55, 0, 0, 26)
+	label.Position = UDim2.new(0, 12, 0, y)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 15
+	label.TextColor3 = Color3.fromRGB(200, 200, 220)
+	label.Parent = frame
+
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0.38, 0, 0, 26)
+	btn.Position = UDim2.new(0.6, 0, 0, y)
+	btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 14
+	btn.TextColor3 = Color3.fromRGB(180, 220, 255)
+	btn.AutoButtonColor = false
+	btn.Parent = frame
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 8)
+	c.Parent = btn
+
+	btn.MouseButton1Click:Connect(function()
+		btn.Text = "Press key..."
+		waitingForBind = bindName
+	end)
+
+	bindButtons[bindName] = btn
+end
+
+createBindRow("Zoom (Hold)", "ZoomHold", startY)
+createBindRow("Set FOV (Hold)", "SetFovHold", startY + spacing)
+createBindRow("Toggle UI", "ToggleUI", startY + spacing * 2)
+createBindRow("Reset Field of View", "ResetFov", startY + spacing * 3)
+
+local function updateKeybindUI()
+	for name, btn in pairs(bindButtons) do
+		btn.Text = Keybinds[name].Name
+	end
+end
+updateKeybindUI()
+
+-- Reset button
+local resetButton = Instance.new("TextButton")
+resetButton.Size = UDim2.new(0, 140, 0, 28)
+resetButton.Position = UDim2.new(0.5, -70, 1, -45)
+resetButton.BackgroundColor3 = Color3.fromRGB(100, 120, 255)
+resetButton.Font = Enum.Font.GothamBold
+resetButton.TextSize = 14
+resetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+resetButton.Text = "Reset FOV"
+resetButton.Parent = frame
+local rc = Instance.new("UICorner")
+rc.CornerRadius = UDim.new(0, 10)
+rc.Parent = resetButton
+
+resetButton.MouseButton1Click:Connect(function()
+	selectedFov = 70
+	zoomFov = 70
+	currentFov = 70
+end)
+
+-- Input
+table.insert(_G.ZoomConnections, UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+
+	if waitingForBind and input.KeyCode ~= Enum.KeyCode.Unknown then
+		Keybinds[waitingForBind] = input.KeyCode
+		waitingForBind = nil
+		updateKeybindUI()
+		return
+	end
+
+	if input.KeyCode == Keybinds.ZoomHold then holdingZ = true; zoomFov = currentFov end
+	if input.KeyCode == Keybinds.SetFovHold then holdingX = true end
+	if input.KeyCode == Keybinds.ToggleUI then gui.Enabled = not gui.Enabled end
+	if input.KeyCode == Keybinds.ResetFov then
+		selectedFov = 70
+		zoomFov = 70
+		currentFov = 70
+	end
+end))
+
+table.insert(_G.ZoomConnections, UIS.InputEnded:Connect(function(input)
+	if input.KeyCode == Keybinds.ZoomHold then holdingZ = false end
+	if input.KeyCode == Keybinds.SetFovHold then holdingX = false end
+end))
+
+table.insert(_G.ZoomConnections, UIS.InputChanged:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+
+	local modifier = 1
+	if UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift) then
+		modifier = slowModifier
+	elseif UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
+		modifier = fastModifier
+	end
+
+	if holdingZ then
+		zoomFov = zoomFov - input.Position.Z * scrollStep * modifier
+		zoomFov = math.clamp(zoomFov, 1, 120)
+	elseif holdingX then
+		selectedFov = selectedFov - input.Position.Z * scrollStep * modifier
+		selectedFov = math.clamp(selectedFov, 1, 120)
+	end
+end))
+
+-- Main loop
+table.insert(_G.ZoomConnections, RunService.RenderStepped:Connect(function()
+	if holdingZ then
+		currentFov = zoomFov
+	else
+		currentFov = selectedFov
+	end
+	
+	updateFOV(currentFov)
+	fovLabel.Text = "FOV: " .. string.format("%.1f", currentFov)
+end))
+
+print("✅ Xeno Zoom Script Loaded! (Hold Z = Zoom | Hold X = Set FOV | Insert = Toggle UI | C = Reset)")
