@@ -1,2 +1,17 @@
-https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Vehiclemodifier.lua
+-- Evade Exploit
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Evade%20Exploit"))()
 
+-- Modded Pshade
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Modded%20Pshade"))()
+
+-- First Person Model
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/first%20person%20model"))()
+
+-- ThirdPerson Force
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/ThirdPerson%20Force"))()
+
+-- Vehicle Modifier
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Vehiclemodifier.lua"))()
+
+-- Zoom Script
+-- loadstring(game:HttpGet("https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Zoom%20script."))()
