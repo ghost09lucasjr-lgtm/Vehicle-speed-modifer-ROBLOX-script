@@ -1,0 +1,200 @@
+-- Force Third Person / Camera Unlocker Script
+-- Works on any game that locks first person
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+print("Camera Unlocker Loading...")
+
+-- Cleanup previous instances
+if _G.CameraUnlockerRunning then
+	print("Cleaning up old camera unlocker...")
+	if _G.CameraUnlockerConnections then
+		for _, conn in ipairs(_G.CameraUnlockerConnections) do 
+			pcall(function() conn:Disconnect() end) 
+		end
+	end
+end
+_G.CameraUnlockerRunning = true
+_G.CameraUnlockerConnections = {}
+
+-- Force unlock settings
+local function unlockCamera()
+	pcall(function()
+		-- Force Classic camera mode (allows zoom in/out)
+		player.CameraMode = Enum.CameraMode.Classic
+		
+		-- Set zoom distances to allow third person
+		player.CameraMinZoomDistance = 0.5
+		player.CameraMaxZoomDistance = 400
+		
+		-- Enable mouse lock toggle
+		player.DevEnableMouseLock = true
+		
+		-- Disable camera lock scripts
+		player.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+	end)
+end
+
+-- Initial unlock
+unlockCamera()
+
+-- Keep unlocking every frame (prevents games from locking it back)
+table.insert(_G.CameraUnlockerConnections, RunService.RenderStepped:Connect(function()
+	unlockCamera()
+end))
+
+-- Re-unlock when character spawns
+table.insert(_G.CameraUnlockerConnections, player.CharacterAdded:Connect(function(char)
+	task.wait(0.5) -- Wait for character to fully load
+	unlockCamera()
+	print("Camera unlocked for new character")
+end))
+
+-- Monitor for camera mode changes and revert them
+table.insert(_G.CameraUnlockerConnections, player:GetPropertyChangedSignal("CameraMode"):Connect(function()
+	if player.CameraMode ~= Enum.CameraMode.Classic then
+		unlockCamera()
+	end
+end))
+
+-- Monitor for zoom distance changes
+table.insert(_G.CameraUnlockerConnections, player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
+	if player.CameraMaxZoomDistance < 400 then
+		unlockCamera()
+	end
+end))
+
+table.insert(_G.CameraUnlockerConnections, player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
+	if player.CameraMinZoomDistance > 0.5 then
+		unlockCamera()
+	end
+end))
+
+-- Create GUI notification
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CameraUnlockerGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local notifFrame = Instance.new("Frame")
+notifFrame.Size = UDim2.new(0, 300, 0, 80)
+notifFrame.Position = UDim2.new(0.5, -150, 0.1, 0)
+notifFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+notifFrame.BorderSizePixel = 0
+notifFrame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = notifFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0.5, 0)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "✓ Camera Unlocked"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 20
+titleLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+titleLabel.Parent = notifFrame
+
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1, 0, 0.5, 0)
+infoLabel.Position = UDim2.new(0, 0, 0.5, 0)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Text = "Scroll to zoom in/out"
+infoLabel.Font = Enum.Font.Gotham
+infoLabel.TextSize = 14
+infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+infoLabel.Parent = notifFrame
+
+-- Fade out notification after 4 seconds
+task.wait(4)
+for i = 0, 1, 0.05 do
+	notifFrame.BackgroundTransparency = i
+	titleLabel.TextTransparency = i
+	infoLabel.TextTransparency = i
+	task.wait(0.03)
+end
+screenGui:Destroy()
+
+print("Camera Unlocker Active! You can now use third person.")
+print("Scroll your mouse wheel to zoom in and out.")
+--// SUPER SIMPLE TSB Sounds for XENO (TEST FIRST!)
+--// Kill → 8243372178 (STOOPID!) | Death → 8243708187 (Habibi)
+--// Client-side ONLY (as requested) - LOUD GLOBAL
+--// TEST: Execute → Kill/Die → If no sound, CHECK CONSOLE + TEST IDs in BOOMBOX!
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local KILL_ID = 8243372178  -- Confirmed working 2026
+local DEATH_ID = 8243708187 -- Confirmed working 2026
+
+-- Sounds in SoundService (global 2D loud)
+local killSound = Instance.new("Sound")
+killSound.SoundId = "rbxassetid://" .. KILL_ID
+killSound.Volume = 10
+killSound.Parent = game.SoundService
+killSound:Play()  -- TEST PLAY ON LOAD
+killSound:Stop()  -- Stop test
+print("✅ KILL SOUND TESTED - DID YOU HEAR STOOPID?")
+
+local deathSound = Instance.new("Sound")
+deathSound.SoundId = "rbxassetid://" .. DEATH_ID
+deathSound.Volume = 10
+deathSound.Parent = game.SoundService
+deathSound:Play()  -- TEST PLAY ON LOAD
+deathSound:Stop()  -- Stop test
+print("✅ DEATH SOUND TESTED - DID YOU HEAR HABIBI?")
+
+-- Play func
+local function play(snd, name)
+    snd.TimePosition = 0
+    snd:Play()
+    print("🔊 " .. name .. " PLAYED LOUD!")
+end
+
+-- Death
+local function setupDeath(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.Died:Connect(function()
+        play(deathSound, "DEATH")
+    end)
+end
+
+if player.Character then setupDeath(player.Character) end
+player.CharacterAdded:Connect(setupDeath)
+
+-- Kills (exact "Kills" - TSB standard)
+task.spawn(function()
+    local leaderstats = player:WaitForChild("leaderstats", 30)
+    if not leaderstats then print("❌ NO LEADERSTATS!") return end
+    
+    local kills = leaderstats:WaitForChild("Kills", 10)  -- SPACE BEFORE KILLS!
+    if not kills then 
+        print("❌ NO 'Kills' STAT! Listing all stats:")
+        for _, v in leaderstats:GetChildren() do
+            print(" - " .. v.Name .. " = " .. v.Value)
+        end
+        return 
+    end
+    
+    local old = kills.Value
+    kills.Changed:Connect(function(new)
+        if new > old then
+            play(killSound, "KILL")
+        end
+        old = new
+    end)
+    print("✅ KILLS DETECT ON 'Kills' | Start: " .. old)
+end)
+
+print("🚀 SCRIPT LOADED! CLIENT-SIDE ONLY")
+print("1. JOIN TSB")
+print("2. DID YOU HEAR TEST SOUNDS ON EXECUTE?")
+print("3. GET KILL → STOOPID")
+print("4. DIE → HABIBI")
+print("IF NO SOUND: Check Roblox audio on, IDs not modded")
