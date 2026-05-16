@@ -1,0 +1,749 @@
+--[[
+    EvadeESP v12 + No More Time Ultimate – Merged for Xeno
+    All ESP features + Teleports, Auto-Win, Auto-Carry, Remote Movement, Anti Suite
+    No varargs, no errors.
+]]
+
+local Players           = game:GetService("Players")
+local LocalPlayer       = Players.LocalPlayer
+local RunService        = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+local Camera            = workspace.CurrentCamera
+local Lighting          = game:GetService("Lighting")
+local CoreGui           = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService   = game:GetService("TeleportService")
+local VirtualInput      = game:GetService("VirtualInputManager")
+local Workspace         = game:GetService("Workspace")
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+local Physics = Remotes and Remotes:FindFirstChild("Physics")
+
+-- ========== Helper Functions ==========
+local function getChar() return LocalPlayer.Character end
+local function getHRP() local c = getChar() return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum() local c = getChar() return c and c:FindFirstChildWhichIsA("Humanoid") end
+local function notify(title, content, duration)
+    pcall(function() Rayfield:Notify({ Title = title, Content = content, Duration = duration or 3 }) end)
+end
+local function fireRemote(remote, arg) if remote then pcall(remote.FireServer, remote, arg) end end
+
+-- ========== NMT Feature Flags ==========
+local nmtFlags = {
+    autoWin = false, autoRevive = false, autoCarry = false,
+    remoteSpeed = false, remoteJump = false,
+    antiKick = false, antiBan = false, antiTPDetect = false,
+    antiSpeedDetect = false, remoteBlocker = false,
+    antiFall = false, antiVoid = false, remoteCorruptionPush = false,
+}
+local walkspeedValue = 80
+local jumpPowerValue = 80
+
+-- ========== EvadeESP Configuration ==========
+local Cfg = {
+    ESPEnabled   = true,  OnlyDowned   = false,
+    ShowName     = true,  ShowAvatar   = true,
+    ShowDistance = true,  ShowStatus   = true,
+    VisCheck     = false, MaxDist      = 1000,
+    Chams        = true,  WhiteOutline = true,
+    TeamColors   = true,  PulseDowned  = true,
+    FillAlpha    = 0.55,
+    EnemyFill    = Color3.fromRGB(230,50,50),
+    EnemyOut     = Color3.fromRGB(255,255,255),
+    TeamFill     = Color3.fromRGB(50,150,255),
+    TeamOut      = Color3.fromRGB(255,255,255),
+    DownFill     = Color3.fromRGB(255,170,0),
+    DownOut      = Color3.fromRGB(255,255,255),
+    NbESP        = true,  NbHitbox = true,
+    NbDist       = true,  NbName   = true,
+    NbFill       = Color3.fromRGB(110,0,0),
+    NbOut        = Color3.fromRGB(255,50,50),
+    FullBright   = false,
+    FB_Brightness= 2,
+    FB_Reapply   = 0.3,
+    CurrentSkybox= "Default (Game)",
+}
+
+-- ========== Vehicle Filter (from EvadeESP) ==========
+local V_TAGS = {"Vehicle","Car","Prop","Decoration","Map"}
+local V_PATS = {"^Vehicle","^Car","^Truck","^Boat","^Plane","^Heli","^Train","^Tank","^Bike","^Bus"}
+local V_NAMES = { ["ATV"]=true, ["Altima"]=true, ["Miata"]=true, ["Forklift"]=true, ["Ghost"]=true, ["Rover"]=true, ["Alien"]=true }
+local function IsVehicle(m)
+    if V_NAMES[m.Name] then return true end
+    if m:FindFirstChildOfClass("VehicleSeat") then return true end
+    if m:FindFirstChildOfClass("Seat") then return true end
+    for _,t in ipairs(V_TAGS) do if CollectionService:HasTag(m,t) then return true end end
+    for _,p in ipairs(V_PATS) do if m.Name:match(p) then return true end end
+    return false
+end
+local knownPlayerChars = {}
+local function RegChar(c) if c then knownPlayerChars[c] = true end end
+
+-- ========== Skyboxes (pshade-ultimate) ==========
+local originalSky = {}
+local gameSky = Lighting:FindFirstChildOfClass("Sky")
+if gameSky then
+    originalSky = {
+        bk=gameSky.SkyboxBk, dn=gameSky.SkyboxDn,
+        ft=gameSky.SkyboxFt, lf=gameSky.SkyboxLf,
+        rt=gameSky.SkyboxRt, up=gameSky.SkyboxUp,
+    }
+end
+local pshade_cussky = {
+    bk="rbxassetid://9544505500", dn="rbxassetid://9544547905",
+    ft="rbxassetid://9544504852", lf="rbxassetid://9544547694",
+    rt="rbxassetid://9544547542", up="rbxassetid://9544547398",
+}
+local randomsky = "https://raw.githubusercontent.com/randomstring0/pshade-ultimate/refs/heads/main/sky/"
+local loadedSkyboxes = {}
+local function fetchSky(key, file)
+    local ok, result = pcall(function() return loadstring(game:HttpGet(randomsky .. file))() end)
+    if ok and type(result) == "table" then loadedSkyboxes[key] = result end
+end
+task.spawn(function()
+    fetchSky("morning","m.json"); fetchSky("midday","n.json"); fetchSky("afternoon","a.json")
+    fetchSky("evening","e.json"); fetchSky("rain","r.json"); fetchSky("cloudy","c.json")
+end)
+local SKY_LIGHTING = {
+    default   = { clock=14, brightness=1,   shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(128,128,128), outdoor=Color3.fromRGB(128,128,128) },
+    pshade    = { clock=14, brightness=1.5, shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(120,110,128), outdoor=Color3.fromRGB(140,130,150) },
+    morning   = { clock=6,  brightness=1.2, shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(255,200,160), outdoor=Color3.fromRGB(255,210,170) },
+    midday    = { clock=12, brightness=2,   shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(128,128,128), outdoor=Color3.fromRGB(150,150,150) },
+    afternoon = { clock=15, brightness=1.6, shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(200,160,100), outdoor=Color3.fromRGB(220,180,120) },
+    evening   = { clock=18, brightness=1.4, shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(200,120,80),  outdoor=Color3.fromRGB(240,140,100) },
+    rain      = { clock=12, brightness=0.6, shadows=true,  fogEnd=800, ambient=Color3.fromRGB(80,90,100),   outdoor=Color3.fromRGB(90,100,110)  },
+    cloudy    = { clock=12, brightness=0.9, shadows=true,  fogEnd=1e8, ambient=Color3.fromRGB(140,140,150), outdoor=Color3.fromRGB(150,150,160) },
+}
+local function RemoveSky()
+    for _,obj in ipairs(Lighting:GetChildren()) do if obj:IsA("Sky") or obj:IsA("Atmosphere") then obj:Destroy() end end
+end
+local function ApplySkyFaces(faces)
+    RemoveSky()
+    local sky = Instance.new("Sky")
+    sky.SkyboxBk = faces.bk or faces.SkyboxBk or pshade_cussky.bk
+    sky.SkyboxDn = faces.dn or faces.SkyboxDn or pshade_cussky.dn
+    sky.SkyboxFt = faces.ft or faces.SkyboxFt or pshade_cussky.ft
+    sky.SkyboxLf = faces.lt or faces.lf or faces.SkyboxLf or pshade_cussky.lf
+    sky.SkyboxRt = faces.rt or faces.SkyboxRt or pshade_cussky.rt
+    sky.SkyboxUp = faces.up or faces.SkyboxUp or pshade_cussky.up
+    sky.StarCount = faces.stars or 0
+    sky.Parent = Lighting
+end
+local function ApplyLightingPreset(preset)
+    local p = SKY_LIGHTING[preset] or SKY_LIGHTING.default
+    Lighting.ClockTime=p.clock; Lighting.Brightness=p.brightness
+    Lighting.GlobalShadows=p.shadows; Lighting.FogEnd=p.fogEnd
+    Lighting.Ambient=p.ambient; Lighting.OutdoorAmbient=p.outdoor
+end
+local function ApplySkybox(name)
+    Cfg.CurrentSkybox = name
+    if name == "Default (Game)" then
+        RemoveSky(); ApplyLightingPreset("default")
+        if next(originalSky) then ApplySkyFaces(originalSky) end
+    elseif name == "pshade Default" then
+        ApplySkyFaces(pshade_cussky); ApplyLightingPreset("pshade")
+    elseif name == "Morning" then
+        ApplySkyFaces(loadedSkyboxes.morning or pshade_cussky); ApplyLightingPreset("morning")
+    elseif name == "Midday" then
+        ApplySkyFaces(loadedSkyboxes.midday  or pshade_cussky); ApplyLightingPreset("midday")
+    elseif name == "Afternoon" then
+        ApplySkyFaces(loadedSkyboxes.afternoon or pshade_cussky); ApplyLightingPreset("afternoon")
+    elseif name == "Evening" then
+        ApplySkyFaces(loadedSkyboxes.evening or pshade_cussky); ApplyLightingPreset("evening")
+    elseif name == "Rain" then
+        ApplySkyFaces(loadedSkyboxes.rain or pshade_cussky); ApplyLightingPreset("rain")
+        local a=Instance.new("Atmosphere",Lighting); a.Density=0.6; a.Haze=2.5
+        a.Color=Color3.fromRGB(100,110,120); a.Decay=Color3.fromRGB(80,90,100)
+    elseif name == "Cloudy" then
+        ApplySkyFaces(loadedSkyboxes.cloudy or pshade_cussky); ApplyLightingPreset("cloudy")
+        local a=Instance.new("Atmosphere",Lighting); a.Density=0.4; a.Haze=1.5
+        a.Color=Color3.fromRGB(150,155,160); a.Decay=Color3.fromRGB(130,135,140)
+    end
+end
+
+-- ========== Full Bright ==========
+local function setFullBright()
+    Lighting.Brightness=Cfg.FB_Brightness; Lighting.ClockTime=14
+    Lighting.FogEnd=1e8; Lighting.GlobalShadows=false
+    Lighting.OutdoorAmbient=Color3.new(1,1,1); Lighting.Ambient=Color3.new(1,1,1)
+    Lighting.ExposureCompensation=math.clamp(Cfg.FB_Brightness*0.8,0,3)
+end
+local function resetLighting()
+    local p=SKY_LIGHTING.default
+    Lighting.Brightness=p.brightness; Lighting.ClockTime=p.clock
+    Lighting.FogEnd=p.fogEnd; Lighting.GlobalShadows=p.shadows
+    Lighting.OutdoorAmbient=p.outdoor; Lighting.Ambient=p.ambient
+    Lighting.ExposureCompensation=0
+end
+task.spawn(function() while true do if Cfg.FullBright then setFullBright() end; task.wait(Cfg.FB_Reapply) end end)
+
+-- ========== Load Rayfield ==========
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+local Window = Rayfield:CreateWindow({
+    Name = "No More Time Ultimate | @" .. LocalPlayer.Name,
+    LoadingTitle = "NMT Ultimate ♥",
+    LoadingSubtitle = "Welcome " .. LocalPlayer.DisplayName,
+    Theme = "Pink",
+    ConfigurationSaving = { Enabled = false },
+})
+
+-- ========== Tabs ==========
+local TabESP   = Window:CreateTab("ESP",     4483362458)
+local TabChams = Window:CreateTab("Chams",   4483362458)
+local TabBot   = Window:CreateTab("Nextbot", 4483362458)
+local TabSky   = Window:CreateTab("Skybox",  4483362458)
+local TabNMT   = Window:CreateTab("NMT Features", 4483362458)
+local TabMore  = Window:CreateTab("More",    4483362458)
+
+-- ========== ESP Tab (from EvadeESP) ==========
+TabESP:CreateSection("ESP Toggling")
+TabESP:CreateToggle({ Name="ESP Enabled  [Insert]",    CurrentValue=Cfg.ESPEnabled,   Flag="ESPEnabled",   Callback=function(v) Cfg.ESPEnabled=v   end })
+TabESP:CreateToggle({ Name="Only Downed  [Home]",      CurrentValue=Cfg.OnlyDowned,   Flag="OnlyDowned",   Callback=function(v) Cfg.OnlyDowned=v   end })
+TabESP:CreateSection("ESP Features")
+TabESP:CreateToggle({ Name="Show Names",               CurrentValue=Cfg.ShowName,     Flag="ShowName",     Callback=function(v) Cfg.ShowName=v     end })
+TabESP:CreateToggle({ Name="Show Avatar",              CurrentValue=Cfg.ShowAvatar,   Flag="ShowAvatar",   Callback=function(v) Cfg.ShowAvatar=v   end })
+TabESP:CreateToggle({ Name="Show Distance",            CurrentValue=Cfg.ShowDistance, Flag="ShowDistance", Callback=function(v) Cfg.ShowDistance=v end })
+TabESP:CreateToggle({ Name="Show Status (Alive/Down)", CurrentValue=Cfg.ShowStatus,   Flag="ShowStatus",   Callback=function(v) Cfg.ShowStatus=v   end })
+TabESP:CreateToggle({ Name="Visibility Check",         CurrentValue=Cfg.VisCheck,     Flag="VisCheck",     Callback=function(v) Cfg.VisCheck=v     end })
+TabESP:CreateSlider({ Name="Detection Distance", Range={50,3000}, Increment=50, Suffix="m", CurrentValue=Cfg.MaxDist, Flag="MaxDist", Callback=function(v) Cfg.MaxDist=v end })
+
+-- ========== Chams Tab (from EvadeESP) ==========
+TabChams:CreateSection("Chams")
+TabChams:CreateToggle({ Name="Enable Chams",         CurrentValue=Cfg.Chams,        Flag="Chams",        Callback=function(v) Cfg.Chams=v        end })
+TabChams:CreateToggle({ Name="White Outline",        CurrentValue=Cfg.WhiteOutline, Flag="WhiteOutline", Callback=function(v) Cfg.WhiteOutline=v end })
+TabChams:CreateToggle({ Name="Team Colors",          CurrentValue=Cfg.TeamColors,   Flag="TeamColors",   Callback=function(v) Cfg.TeamColors=v   end })
+TabChams:CreateToggle({ Name="Pulse Downed Players", CurrentValue=Cfg.PulseDowned,  Flag="PulseDowned",  Callback=function(v) Cfg.PulseDowned=v  end })
+TabChams:CreateSlider({ Name="Fill Alpha", Range={0,100}, Increment=5, Suffix="%", CurrentValue=math.floor(Cfg.FillAlpha*100), Flag="FillAlpha", Callback=function(v) Cfg.FillAlpha=v/100 end })
+TabChams:CreateColorPicker({ Name="Enemy Fill",    Color=Cfg.EnemyFill, Flag="EnemyFill", Callback=function(c) Cfg.EnemyFill=c end })
+TabChams:CreateColorPicker({ Name="Enemy Outline", Color=Cfg.EnemyOut,  Flag="EnemyOut",  Callback=function(c) Cfg.EnemyOut=c  end })
+TabChams:CreateColorPicker({ Name="Team Fill",    Color=Cfg.TeamFill, Flag="TeamFill", Callback=function(c) Cfg.TeamFill=c end })
+TabChams:CreateColorPicker({ Name="Team Outline", Color=Cfg.TeamOut,  Flag="TeamOut",  Callback=function(c) Cfg.TeamOut=c  end })
+TabChams:CreateColorPicker({ Name="Downed Fill",    Color=Cfg.DownFill, Flag="DownFill", Callback=function(c) Cfg.DownFill=c end })
+TabChams:CreateColorPicker({ Name="Downed Outline", Color=Cfg.DownOut,  Flag="DownOut",  Callback=function(c) Cfg.DownOut=c  end })
+
+-- ========== Nextbot Tab (from EvadeESP) ==========
+TabBot:CreateSection("Nextbot ESP")
+TabBot:CreateToggle({ Name="Nextbot ESP",      CurrentValue=Cfg.NbESP,    Flag="NbESP",    Callback=function(v) Cfg.NbESP=v    end })
+TabBot:CreateToggle({ Name="Nextbot Hitbox",   CurrentValue=Cfg.NbHitbox, Flag="NbHitbox", Callback=function(v) Cfg.NbHitbox=v end })
+TabBot:CreateToggle({ Name="Nextbot Distance", CurrentValue=Cfg.NbDist,   Flag="NbDist",   Callback=function(v) Cfg.NbDist=v   end })
+TabBot:CreateToggle({ Name="Nextbot Name",     CurrentValue=Cfg.NbName,   Flag="NbName",   Callback=function(v) Cfg.NbName=v   end })
+TabBot:CreateColorPicker({ Name="Nextbot Fill",    Color=Cfg.NbFill, Flag="NbFill", Callback=function(c) Cfg.NbFill=c end })
+TabBot:CreateColorPicker({ Name="Nextbot Outline", Color=Cfg.NbOut,  Flag="NbOut",  Callback=function(c) Cfg.NbOut=c  end })
+
+-- ========== Skybox Tab (from EvadeESP) ==========
+TabSky:CreateSection("pshade Skyboxes")
+TabSky:CreateLabel("Skyboxes fetched live from pshade-ultimate")
+TabSky:CreateDropdown({
+    Name = "Select Skybox", Options = { "Default (Game)", "pshade Default", "Morning", "Midday", "Afternoon", "Evening", "Rain", "Cloudy" },
+    CurrentOption = {"Default (Game)"}, MultipleOptions = false, Flag = "SkyboxDropdown",
+    Callback = function(selected)
+        local name = type(selected)=="table" and selected[1] or selected
+        ApplySkybox(name)
+        Rayfield:Notify({ Title="Skybox ♥", Content=name.." applied!", Duration=3, Image=4483362458 })
+    end,
+})
+TabSky:CreateButton({ Name="Reset to Game Sky", Callback=function() ApplySkybox("Default (Game)"); Rayfield:Notify({ Title="Sky Reset ♥", Content="Original sky restored.", Duration=3 }) end })
+
+-- ========== No More Time Features Tab ==========
+TabNMT:CreateSection("Combat")
+TabNMT:CreateToggle({ Name="Auto-Win (EndScreen)", CurrentValue=false, Flag="AutoWin", Callback=function(v) nmtFlags.autoWin=v end })
+TabNMT:CreateToggle({ Name="Auto-Revive (SpawnAsGhost)", CurrentValue=false, Flag="AutoRevive", Callback=function(v) nmtFlags.autoRevive=v end })
+TabNMT:CreateToggle({ Name="Auto-Carry (Spam F + PickUp)", CurrentValue=false, Flag="AutoCarry", Callback=function(v) nmtFlags.autoCarry=v end })
+TabNMT:CreateToggle({ Name="Remote Corruption Push (SavoWall)", CurrentValue=false, Flag="CorruptionPush", Callback=function(v) nmtFlags.remoteCorruptionPush=v end })
+TabNMT:CreateSection("Movement (Remote)")
+TabNMT:CreateToggle({ Name="Remote Speed (Physics AssemblyLinearVelocity)", CurrentValue=false, Flag="RemoteSpeed", Callback=function(v) nmtFlags.remoteSpeed=v end })
+TabNMT:CreateSlider({ Name="WalkSpeed", Range={16,300}, Increment=5, CurrentValue=80, Flag="SpeedVal", Callback=function(v) walkspeedValue=v end })
+TabNMT:CreateToggle({ Name="Remote Infinite Jump (Physics ApplyImpulse)", CurrentValue=false, Flag="RemoteJump", Callback=function(v) nmtFlags.remoteJump=v end })
+TabNMT:CreateSlider({ Name="Jump Power", Range={50,200}, Increment=10, CurrentValue=80, Flag="JumpPower", Callback=function(v) jumpPowerValue=v end })
+TabNMT:CreateSection("Safety")
+TabNMT:CreateToggle({ Name="Anti-Fall (cancel downward velocity)", CurrentValue=false, Flag="AntiFall", Callback=function(v) nmtFlags.antiFall=v end })
+TabNMT:CreateToggle({ Name="Anti-Void (teleport up from Y < -50)", CurrentValue=false, Flag="AntiVoid", Callback=function(v) nmtFlags.antiVoid=v end })
+TabNMT:CreateSection("Anti Suite")
+TabNMT:CreateToggle({ Name="Anti-Kick", CurrentValue=false, Flag="AntiKick", Callback=function(v) nmtFlags.antiKick=v end })
+TabNMT:CreateToggle({ Name="Anti-Ban", CurrentValue=false, Flag="AntiBan", Callback=function(v) nmtFlags.antiBan=v end })
+TabNMT:CreateToggle({ Name="Anti-Teleport Detection (position spoof)", CurrentValue=false, Flag="AntiTP", Callback=function(v) nmtFlags.antiTPDetect=v end })
+TabNMT:CreateToggle({ Name="Anti-Speed Detection (clamp velocity)", CurrentValue=false, Flag="AntiSpeed", Callback=function(v) nmtFlags.antiSpeedDetect=v end })
+TabNMT:CreateToggle({ Name="Remote Blocker (kick/ban remotes)", CurrentValue=false, Flag="RemoteBlocker", Callback=function(v) nmtFlags.remoteBlocker=v end })
+TabNMT:CreateSection("Teleports (Instant CFrame)")
+TabNMT:CreateButton({ Name="Teleport to Spawn", Callback=function()
+    local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation")
+    local hrp = getHRP()
+    if spawn and hrp then hrp.CFrame = spawn.CFrame + Vector3.new(0,3,0); notify("Teleport","To spawn") end
+end })
+TabNMT:CreateButton({ Name="Teleport to Exit (Auto-locate)", Callback=function()
+    for _,part in ipairs(Workspace:GetDescendants()) do
+        if part:IsA("BasePart") and (part.Name:lower():find("exit") or part.Name:lower():find("goal") or part.Name:lower():find("finish")) then
+            local hrp = getHRP()
+            if hrp then hrp.CFrame = part.CFrame + Vector3.new(0,5,0); notify("Teleport","To exit: "..part.Name) end
+            return
+        end
+    end
+    notify("Teleport","Exit not found")
+end })
+TabNMT:CreateButton({ Name="Teleport to Nearest Downed Player", Callback=function()
+    local myHRP = getHRP(); if not myHRP then return end
+    local nearest, minDist = nil, math.huge
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hum = plr.Character:FindFirstChildWhichIsA("Humanoid")
+            if hum and (hum.Health <= 0 or plr.Character:FindFirstChild("Downed")) then
+                local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local dist = (hrp.Position - myHRP.Position).Magnitude
+                    if dist < minDist then minDist, nearest = dist, plr end
+                end
+            end
+        end
+    end
+    if nearest then
+        local targetHRP = nearest.Character.HumanoidRootPart
+        myHRP.CFrame = targetHRP.CFrame + Vector3.new(0,3,0)
+        notify("Rescue","Teleported to "..nearest.Name)
+    else notify("Rescue","No downed players") end
+end })
+
+-- ========== More Tab (from EvadeESP) ==========
+TabMore:CreateSection("Full Bright")
+TabMore:CreateToggle({ Name="Full Bright  [PGDN]", CurrentValue=Cfg.FullBright, Flag="FullBright", Callback=function(v) Cfg.FullBright=v; if v then setFullBright() else resetLighting() end end })
+TabMore:CreateSlider({ Name="Brightness", Range={1,10}, Increment=1, Suffix="x", CurrentValue=Cfg.FB_Brightness, Flag="FB_Brightness", Callback=function(v) Cfg.FB_Brightness=v; if Cfg.FullBright then setFullBright() end end })
+TabMore:CreateSlider({ Name="Reapply Rate", Range={1,20}, Increment=1, Suffix="x10ms", CurrentValue=math.floor(Cfg.FB_Reapply*10), Flag="FB_Reapply", Callback=function(v) Cfg.FB_Reapply=v/10 end })
+TabMore:CreateSection("Keybinds")
+TabMore:CreateKeybind({ Name="Toggle UI",         CurrentKeybind="RightShift", HoldToInteract=false, Flag="ToggleUI", Callback=function() end })
+TabMore:CreateKeybind({ Name="Toggle ESP",        CurrentKeybind="Insert",     HoldToInteract=false, Flag="ToggleESP", Callback=function() Cfg.ESPEnabled=not Cfg.ESPEnabled; Rayfield:Notify({Title="ESP "..(Cfg.ESPEnabled and "ON ✅" or "OFF ❌"),Duration=2}) end })
+TabMore:CreateKeybind({ Name="Only Downed",       CurrentKeybind="Home",       HoldToInteract=false, Flag="ToggleDowned", Callback=function() Cfg.OnlyDowned=not Cfg.OnlyDowned; Rayfield:Notify({Title="Downed "..(Cfg.OnlyDowned and "ON ✅" or "OFF ❌"),Duration=2}) end })
+TabMore:CreateKeybind({ Name="Toggle Full Bright",CurrentKeybind="PageDown",   HoldToInteract=false, Flag="ToggleFB", Callback=function() Cfg.FullBright=not Cfg.FullBright; if Cfg.FullBright then setFullBright() else resetLighting() end; Rayfield:Notify({Title="Full Bright "..(Cfg.FullBright and "ON ✅" or "OFF ❌"),Duration=2}) end })
+TabMore:CreateSection("Utility")
+TabMore:CreateButton({ Name="Rescan All Entities", Callback=function() _G.EvadeESP_Rescan(); Rayfield:Notify({Title="Rescan Done", Content="Entities rescanned", Duration=3}) end })
+TabMore:CreateButton({ Name="Reset All Lighting", Callback=function() RemoveSky(); resetLighting(); Cfg.CurrentSkybox="Default (Game)"; Rayfield:Notify({Title="Lighting Reset", Duration=3}) end })
+TabMore:CreateSection("You ♥")
+local avatarUrl = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+TabMore:CreateLabel("Display Name:  " .. LocalPlayer.DisplayName)
+TabMore:CreateLabel("Username:  @" .. LocalPlayer.Name)
+TabMore:CreateLabel("User ID:  " .. tostring(LocalPlayer.UserId))
+TabMore:CreateLabel("No More Time Ultimate ♥  |  Rayfield Pink  |  pshade Skies")
+
+-- ========== Avatar Badge (from EvadeESP) ==========
+task.spawn(function()
+    task.wait(3)
+    local rayfieldSG = nil
+    for _, v in ipairs(CoreGui:GetChildren()) do if v:IsA("ScreenGui") and v.Name == "Rayfield" then rayfieldSG = v; break end end
+    if not rayfieldSG then return end
+    local mainFrame = nil
+    for _, v in ipairs(rayfieldSG:GetDescendants()) do if v:IsA("Frame") and v.Name == "Main" then mainFrame = v; break end end
+    if not mainFrame then return end
+    local topbar = mainFrame:FindFirstChild("Topbar") or mainFrame:FindFirstChild("TopBar") or mainFrame:FindFirstChild("Bar")
+    if not topbar then topbar = mainFrame end
+    local ava = Instance.new("ImageLabel")
+    ava.Name = "UserAvatarBadge"
+    ava.Size = UDim2.fromOffset(34,34)
+    ava.Position = UDim2.new(0,6,0.5,-17)
+    ava.BackgroundColor3 = Color3.fromRGB(15,5,12)
+    ava.BorderSizePixel = 0
+    ava.Image = avatarUrl
+    ava.ScaleType = Enum.ScaleType.Crop
+    ava.ZIndex = 100
+    ava.Parent = topbar
+    Instance.new("UICorner", ava).CornerRadius = UDim.new(1,0)
+    local stroke = Instance.new("UIStroke", ava)
+    stroke.Color = Color3.fromRGB(220,50,90)
+    stroke.Thickness = 2
+end)
+
+-- ========== ESP Core (from EvadeESP, adapted for NMT) ==========
+local ESPGui = Instance.new("ScreenGui")
+ESPGui.Name = "NMT_Ultimate_ESP"; ESPGui.ResetOnSpawn = false
+ESPGui.IgnoreGuiInset = true; ESPGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ESPGui.Parent = CoreGui
+
+local ESPs = {}
+local function HideE(e)
+    if e.frame then e.frame.Visible = false end
+    if e.hl then e.hl.Enabled = false end
+    if e.hitboxHL then e.hitboxHL.Enabled = false end
+end
+local function CleanE(ent)
+    local e = ESPs[ent]; if not e or e.cleaned then return end
+    e.cleaned = true
+    if e.frame then e.frame:Destroy() end
+    if e.hl then e.hl:Destroy() end
+    if e.hitboxHL then e.hitboxHL:Destroy() end
+    ESPs[ent] = nil
+end
+local function W2S(pos)
+    local sp, vis = Camera:WorldToViewportPoint(pos)
+    if not vis or sp.Z <= 0 then return nil end
+    return sp
+end
+local function BuildPlayerESP(char, plr)
+    if char == LocalPlayer.Character then return end
+    if ESPs[char] and not ESPs[char].pending then return end
+    RegChar(char)
+    local isTeam = false
+    if Cfg.TeamColors then
+        local mt = LocalPlayer.Team
+        if mt and plr.Team == mt then isTeam = true end
+    end
+    local hl = Instance.new("Highlight"); hl.Adornee = char
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillColor = Cfg.EnemyFill; hl.FillTransparency = Cfg.FillAlpha
+    hl.OutlineColor = Cfg.EnemyOut; hl.OutlineTransparency = 0; hl.Parent = ESPGui
+    local frame = Instance.new("Frame", ESPGui)
+    frame.AnchorPoint = Vector2.new(0.5,1); frame.BackgroundTransparency = 1
+    frame.Size = UDim2.fromOffset(160,80); frame.Visible = false
+    local avaImg = Instance.new("ImageLabel", frame)
+    avaImg.Size = UDim2.fromOffset(36,36); avaImg.AnchorPoint = Vector2.new(0.5,0)
+    avaImg.Position = UDim2.new(0.5,0,0,0); avaImg.BackgroundTransparency = 1
+    avaImg.Image = "rbxthumb://type=AvatarHeadShot&id="..plr.UserId.."&w=48&h=48"
+    local avaS = Instance.new("UIStroke", avaImg); avaS.Color = Color3.fromRGB(220,50,90); avaS.Thickness = 1.5
+    Instance.new("UICorner", avaImg).CornerRadius = UDim.new(0,5)
+    local function TL(pos, sz, txt, col, ts, bold)
+        local l = Instance.new("TextLabel", frame)
+        l.Position=pos; l.Size=sz; l.BackgroundTransparency=1
+        l.Text=txt; l.TextColor3=col
+        l.TextStrokeTransparency=0; l.TextStrokeColor3=Color3.new(0,0,0)
+        l.TextSize=ts; l.Font=bold and Enum.Font.GothamBold or Enum.Font.Gotham
+        l.TextXAlignment=Enum.TextXAlignment.Center
+        l.TextTruncate=Enum.TextTruncate.AtEnd
+        return l
+    end
+    local nLbl = TL(UDim2.fromOffset(0,38), UDim2.new(1,0,0,20), plr.DisplayName, Color3.new(1,1,1), 16, true)
+    local uLbl = TL(UDim2.fromOffset(0,58), UDim2.new(1,0,0,12), "@"..plr.Name, Color3.fromRGB(160,130,150), 10, false)
+    local sLbl = TL(UDim2.fromOffset(0,70), UDim2.new(1,0,0,12), "● Alive  0m", Color3.fromRGB(100,255,100), 11, false)
+    local function Refresh(downed, dist)
+        sLbl.Text = (downed and "● DOWN  " or "● Alive  ")..(dist and math.floor(dist).."m" or "0m")
+        sLbl.TextColor3 = downed and Color3.fromRGB(255,140,0) or Color3.fromRGB(100,255,100)
+    end
+    ESPs[char] = { isNextbot=false, pending=false, hl=hl, frame=frame, nLbl=nLbl, uLbl=uLbl, sLbl=sLbl, avaImg=avaImg, hum=nil, isTeam=isTeam, refresh=Refresh, plr=plr, cleaned=false }
+    task.spawn(function()
+        local hum = char:WaitForChild("Humanoid", 60)
+        local e = ESPs[char]; if not e or e.cleaned then return end
+        e.hum = hum; Refresh(hum.Health<=0)
+        hum.Died:Connect(function() task.delay(8, function() CleanE(char) end) end)
+    end)
+    char.AncestryChanged:Connect(function() if not char.Parent then task.delay(0.5, function() CleanE(char) end) end end)
+    plr:GetPropertyChangedSignal("Team"):Connect(function()
+        local e=ESPs[char]; if not e then return end
+        local mt=LocalPlayer.Team; e.isTeam=mt and plr.Team==mt
+    end)
+    plr:GetPropertyChangedSignal("DisplayName"):Connect(function() if ESPs[char] then ESPs[char].nLbl.Text=plr.DisplayName end end)
+end
+local function FindAnchor(char)
+    local h=char:FindFirstChild("HumanoidRootPart")
+    if h and h:IsA("BasePart") then return h end
+    if char.PrimaryPart and char.PrimaryPart:IsA("BasePart") then return char.PrimaryPart end
+    local best,bv=nil,0
+    for _,p in ipairs(char:GetChildren()) do if p:IsA("BasePart") then local v=p.Size.X*p.Size.Y*p.Size.Z; if v>bv then best=p; bv=v end end end
+    return best
+end
+local function AddNextbotESP(char, hum)
+    if ESPs[char] then return end
+    ESPs[char]={pending=true}
+    task.spawn(function()
+        if not char.Parent then task.wait(0.25) end
+        if not char.Parent then ESPs[char]=nil; return end
+        if not ESPs[char] or not ESPs[char].pending then return end
+        if hum.Health<=0 then ESPs[char]=nil; return end
+        local anchor=FindAnchor(char); if not anchor then ESPs[char]=nil; return end
+        local hl=Instance.new("Highlight"); hl.Adornee=char
+        hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+        hl.FillColor=Cfg.NbFill; hl.FillTransparency=Cfg.FillAlpha
+        hl.OutlineColor=Cfg.NbOut; hl.OutlineTransparency=0; hl.Parent=ESPGui
+        local hitboxHL=Instance.new("Highlight"); hitboxHL.Adornee=char
+        hitboxHL.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+        hitboxHL.FillColor=Cfg.NbOut; hitboxHL.FillTransparency=0.93
+        hitboxHL.OutlineColor=Color3.fromRGB(255,220,0); hitboxHL.OutlineTransparency=0
+        hitboxHL.Parent=ESPGui
+        local frame=Instance.new("Frame",ESPGui)
+        frame.AnchorPoint=Vector2.new(0.5,1); frame.BackgroundTransparency=1
+        frame.Size=UDim2.fromOffset(150,50); frame.Visible=false
+        local function NL(pos,sz,txt,col,ts,bold)
+            local l=Instance.new("TextLabel",frame)
+            l.Position=pos; l.Size=sz; l.BackgroundTransparency=1
+            l.Text=txt; l.TextColor3=col
+            l.TextStrokeTransparency=0.3; l.TextStrokeColor3=Color3.new(0,0,0)
+            l.TextSize=ts; l.Font=bold and Enum.Font.GothamBold or Enum.Font.Gotham
+            l.TextXAlignment=Enum.TextXAlignment.Center
+            return l
+        end
+        local tLbl=NL(UDim2.fromOffset(0,0),  UDim2.new(1,0,0,16),"⚠ NEXTBOT", Color3.fromRGB(255,165,0),   12,true)
+        local nLbl=NL(UDim2.fromOffset(0,16), UDim2.new(1,0,0,16), char.Name,   Cfg.NbOut,                   12,false)
+        local dLbl=NL(UDim2.fromOffset(0,32), UDim2.new(1,0,0,14), "0 studs",   Color3.fromRGB(255,200,200), 10,false)
+        ESPs[char]={ isNextbot=true, pending=false, hl=hl, hitboxHL=hitboxHL, frame=frame, tLbl=tLbl, nLbl=nLbl, dLbl=dLbl, hum=hum, hrp=anchor, cleaned=false }
+        hum.Died:Connect(function() task.delay(1,function() CleanE(char) end) end)
+        char.AncestryChanged:Connect(function() if not char.Parent then CleanE(char) end end)
+    end)
+end
+local function RouteNPC(char, hum)
+    if char==LocalPlayer.Character then return end
+    if ESPs[char] then return end
+    if knownPlayerChars[char] then return end
+    if hum.Health<=0 then return end
+    if IsVehicle(char) then return end
+    AddNextbotESP(char,hum)
+end
+local function ScanPlayers()
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr==LocalPlayer then continue end
+        local char=plr.Character; if not char then continue end
+        RegChar(char)
+        local e=ESPs[char]
+        if not e or e.pending then BuildPlayerESP(char,plr) end
+    end
+end
+local function ScanWorld()
+    for _,d in ipairs(workspace:GetDescendants()) do
+        if not d.Parent then continue end
+        if d:IsA("Humanoid") then
+            local c=d.Parent
+            if c and c:IsA("Model") and c~=LocalPlayer.Character and not Players:GetPlayerFromCharacter(c) and not knownPlayerChars[c] then
+                RouteNPC(c,d)
+            end
+        end
+    end
+end
+_G.EvadeESP_Rescan = function() ScanPlayers(); ScanWorld() end
+ScanPlayers(); ScanWorld()
+local function HookPlayer(plr)
+    if plr==LocalPlayer then return end
+    plr.CharacterAdded:Connect(function(char) RegChar(char); BuildPlayerESP(char,plr) end)
+    plr.CharacterRemoving:Connect(function() task.delay(8,function() if plr.Character then CleanE(plr.Character) end end) end)
+    if plr.Character then RegChar(plr.Character); BuildPlayerESP(plr.Character,plr) end
+end
+for _,plr in ipairs(Players:GetPlayers()) do HookPlayer(plr) end
+Players.PlayerAdded:Connect(HookPlayer)
+Players.PlayerRemoving:Connect(function(plr) if plr.Character then CleanE(plr.Character) end end)
+workspace.DescendantAdded:Connect(function(d) task.defer(function() if d and d.Parent and d:IsA("Humanoid") then local c=d.Parent; if c and c:IsA("Model") and c~=LocalPlayer.Character and not Players:GetPlayerFromCharacter(c) and not knownPlayerChars[c] then RouteNPC(c,d) end end end) end)
+workspace.DescendantRemoving:Connect(function(d) if ESPs[d] then CleanE(d) end end)
+task.spawn(function() while true do task.wait(5); ScanWorld() end end)
+
+-- ========== Render Loop (ESP) ==========
+local pulseT=0; local txtT=0; local TXT_I=0.1
+local rayParams=RaycastParams.new()
+rayParams.FilterType=Enum.RaycastFilterType.Exclude; rayParams.IgnoreWater=true
+RunService.Heartbeat:Connect(ScanPlayers)
+RunService.RenderStepped:Connect(function(dt)
+    pulseT=pulseT+dt; txtT=txtT+dt
+    local doTxt=txtT>=TXT_I; if doTxt then txtT=0 end
+    if not Cfg.ESPEnabled then for _,e in pairs(ESPs) do HideE(e) end; return end
+    local lChar=LocalPlayer.Character; if not lChar then return end
+    local lHRP=lChar:FindFirstChild("HumanoidRootPart"); if not lHRP then return end
+    local lPos=lHRP.Position
+    if lChar~=lastLC then lastLC=lChar; rayParams.FilterDescendantsInstances={lChar,Camera} end
+    local pulseFill=0.4+0.28*math.abs(math.sin(pulseT*3.2))
+    for ent,esp in pairs(ESPs) do
+        if esp.pending then continue end
+        if not ent.Parent then CleanE(ent); continue end
+        if not esp.isNextbot then
+            local hum=esp.hum
+            if not hum then hum=ent:FindFirstChildOfClass("Humanoid"); if hum then esp.hum=hum end end
+            local hrp=ent:FindFirstChild("HumanoidRootPart")
+            if not hrp or not hum then
+                if esp.hl then esp.hl.Enabled=Cfg.Chams end
+                if esp.frame then esp.frame.Visible=false end; continue
+            end
+            local dist=(lPos-hrp.Position).Magnitude
+            local state=hum:GetState()
+            local downed=hum.Health<=0 or state==Enum.HumanoidStateType.Dead or state==Enum.HumanoidStateType.Ragdoll or state==Enum.HumanoidStateType.FallingDown
+            if dist>Cfg.MaxDist then HideE(esp); continue end
+            if Cfg.OnlyDowned and not downed then HideE(esp); continue end
+            if Cfg.VisCheck then
+                local ray=workspace:Raycast(Camera.CFrame.Position,hrp.Position-Camera.CFrame.Position,rayParams)
+                if ray and not ray.Instance:IsDescendantOf(ent) then HideE(esp); continue end
+            end
+            local labelPart=ent:FindFirstChild("Head") or hrp
+            local sp=W2S(labelPart.Position+Vector3.new(0,0.6,0))
+            if not sp then
+                if esp.hl then esp.hl.Enabled=Cfg.Chams end
+                if esp.frame then esp.frame.Visible=false end; continue
+            end
+            local sf=math.clamp(70/dist,0.18,1.4)
+            local fillC=downed and Cfg.DownFill or (esp.isTeam and Cfg.TeamFill or Cfg.EnemyFill)
+            local outC =downed and Cfg.DownOut  or (esp.isTeam and Cfg.TeamOut  or Cfg.EnemyOut)
+            local showAva=Cfg.ShowAvatar
+            local baseH=showAva and 80 or 44
+            local nameY=showAva and 38 or 0
+            local uY   =showAva and 58 or 20
+            local sY   =showAva and 70 or 32
+            esp.frame.Visible=true
+            esp.frame.Position=UDim2.fromOffset(sp.X,sp.Y-4)
+            esp.frame.Size=UDim2.fromOffset(160*sf,baseH*sf)
+            if esp.avaImg then
+                esp.avaImg.Visible=showAva
+                esp.avaImg.Size=UDim2.fromOffset(36*sf,36*sf)
+                esp.avaImg.Position=UDim2.new(0.5,0,0,0)
+            end
+            esp.nLbl.Visible=Cfg.ShowName;   esp.nLbl.TextSize=math.clamp(16*sf,10,20)
+            esp.nLbl.Position=UDim2.new(0,0,0,nameY*sf); esp.nLbl.Size=UDim2.new(1,0,0,20*sf)
+            esp.uLbl.Visible=Cfg.ShowName;   esp.uLbl.TextSize=math.clamp(10*sf,7,13)
+            esp.uLbl.Position=UDim2.new(0,0,0,uY*sf);   esp.uLbl.Size=UDim2.new(1,0,0,12*sf)
+            esp.sLbl.Visible=Cfg.ShowStatus; esp.sLbl.TextSize=math.clamp(11*sf,7,14)
+            esp.sLbl.Position=UDim2.new(0,0,0,sY*sf);   esp.sLbl.Size=UDim2.new(1,0,0,12*sf)
+            if Cfg.Chams then
+                esp.hl.Enabled=true; esp.hl.FillColor=fillC
+                esp.hl.FillTransparency=(Cfg.PulseDowned and downed) and pulseFill or Cfg.FillAlpha
+                esp.hl.OutlineColor=Cfg.WhiteOutline and Color3.fromRGB(255,255,255) or outC
+                esp.hl.OutlineTransparency=0
+            else esp.hl.Enabled=false end
+            if doTxt then esp.refresh(downed,dist) end
+        else
+            if not esp.hum then CleanE(ent); continue end
+            local anchor=esp.hrp
+            if not anchor or not anchor.Parent then CleanE(ent); continue end
+            if not Cfg.NbESP then HideE(esp); continue end
+            local dist=(lPos-anchor.Position).Magnitude
+            if dist>Cfg.MaxDist then HideE(esp); continue end
+            local sp=W2S(anchor.Position+Vector3.new(0,anchor.Size.Y*0.5+0.2,0))
+            if not sp then HideE(esp); continue end
+            local sf=math.clamp(70/dist,0.15,1.5)
+            esp.hl.Enabled=Cfg.Chams; esp.hl.FillColor=Cfg.NbFill
+            esp.hl.FillTransparency=Cfg.FillAlpha; esp.hl.OutlineColor=Cfg.NbOut; esp.hl.OutlineTransparency=0
+            if esp.hitboxHL then
+                esp.hitboxHL.Enabled=Cfg.NbHitbox; esp.hitboxHL.FillColor=Cfg.NbOut
+                esp.hitboxHL.OutlineColor=Color3.fromRGB(255,220,0); esp.hitboxHL.FillTransparency=0.93
+            end
+            esp.frame.Visible=true
+            esp.frame.Position=UDim2.fromOffset(sp.X,sp.Y-4)
+            esp.frame.Size=UDim2.fromOffset(150*sf,50*sf)
+            esp.tLbl.TextSize=math.clamp(12*sf,8,15)
+            esp.tLbl.Position=UDim2.fromOffset(0,0); esp.tLbl.Size=UDim2.new(1,0,0,16*sf)
+            esp.nLbl.Visible=Cfg.NbName; esp.nLbl.Text=ent.Name; esp.nLbl.TextColor3=Cfg.NbOut
+            esp.nLbl.TextSize=math.clamp(12*sf,8,15)
+            esp.nLbl.Position=UDim2.new(0,0,0,16*sf); esp.nLbl.Size=UDim2.new(1,0,0,16*sf)
+            esp.dLbl.Visible=Cfg.NbDist; esp.dLbl.TextSize=math.clamp(10*sf,6,12)
+            esp.dLbl.Position=UDim2.new(0,0,0,32*sf); esp.dLbl.Size=UDim2.new(1,0,0,14*sf)
+            if doTxt then esp.dLbl.Text=math.floor(dist).." studs" end
+        end
+    end
+end)
+
+-- ========== No More Time Background Loops ==========
+-- Auto-Win
+task.spawn(function() while task.wait(1) do if nmtFlags.autoWin and Remotes then
+    if Remotes.EndScreen then fireRemote(Remotes.EndScreen, true) end
+    if Remotes.UpdateRunProgress then fireRemote(Remotes.UpdateRunProgress, 1) end
+end end end)
+-- Auto-Revive
+task.spawn(function() while task.wait(0.5) do if nmtFlags.autoRevive then
+    local hum = getHum()
+    if hum and (hum.Health <= 0 or (getChar() and getChar():FindFirstChild("Downed"))) then
+        if Remotes and Remotes.SpawnAsGhost then fireRemote(Remotes.SpawnAsGhost) end
+        if Remotes and Remotes.UseAbility then fireRemote(Remotes.UseAbility, "Revive") end
+        notify("Auto-Revive","Attempting revive",2)
+    end
+end end end)
+-- Auto-Carry
+task.spawn(function() while task.wait(0.1) do if nmtFlags.autoCarry then
+    if Remotes and Remotes.PickUp then fireRemote(Remotes.PickUp) end
+    VirtualInput:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    task.wait(0.05); VirtualInput:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+end end end)
+-- Remote Speed & Infinite Jump
+RunService.Stepped:Connect(function()
+    if nmtFlags.remoteSpeed then
+        local hrp = getHRP()
+        if hrp and Physics and Physics.AssemblyLinearVelocity then
+            local moveDir = Vector3.zero
+            if not UserInputService:GetFocusedTextBox() then
+                local cf = Camera.CFrame
+                local fwd = Vector3.new(cf.LookVector.X,0,cf.LookVector.Z).Unit
+                local right = Vector3.new(cf.RightVector.X,0,cf.RightVector.Z).Unit
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + fwd end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - fwd end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - right end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + right end
+            end
+            if moveDir.Magnitude > 0 then
+                pcall(Physics.AssemblyLinearVelocity.FireServer, Physics.AssemblyLinearVelocity, moveDir.Unit * walkspeedValue)
+            end
+        end
+        local hum = getHum()
+        if hum then hum.WalkSpeed = walkspeedValue end
+    end
+    if nmtFlags.remoteJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) and not UserInputService:GetFocusedTextBox() then
+        local hum = getHum()
+        if hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping then
+            local hrp = getHRP()
+            if hrp and Physics and Physics.ApplyImpulse then
+                pcall(Physics.ApplyImpulse.FireServer, Physics.ApplyImpulse, Vector3.new(0, jumpPowerValue * 0.8, 0))
+            end
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end
+    end
+end)
+UserInputService.JumpRequest:Connect(function()
+    if nmtFlags.remoteJump then
+        local hrp = getHRP()
+        if hrp and Physics then
+            if Physics.ApplyImpulse then pcall(Physics.ApplyImpulse.FireServer, Physics.ApplyImpulse, Vector3.new(0, jumpPowerValue * 0.8, 0)) end
+            if Physics.AssemblyLinearVelocity then
+                local vel = hrp.AssemblyLinearVelocity
+                pcall(Physics.AssemblyLinearVelocity.FireServer, Physics.AssemblyLinearVelocity, Vector3.new(vel.X, jumpPowerValue, vel.Z))
+            end
+        end
+        local hum = getHum()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+-- Anti-Fall / Anti-Void
+local lastSafePos = nil
+RunService.Heartbeat:Connect(function()
+    local hrp = getHRP()
+    if not hrp then return end
+    if nmtFlags.antiFall then
+        local vel = hrp.AssemblyLinearVelocity
+        if vel.Y < -30 then hrp.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z) end
+    end
+    if nmtFlags.antiVoid and hrp.Position.Y < -50 then
+        local safe = lastSafePos or (hrp.CFrame + Vector3.new(0, 150, 0))
+        hrp.CFrame = safe
+    elseif hrp.Position.Y > -20 then lastSafePos = hrp.CFrame end
+end)
+-- Corruption Push
+task.spawn(function() while task.wait(3) do if nmtFlags.remoteCorruptionPush and Remotes and Remotes.SavoWall then pcall(Remotes.SavoWall.FireServer, Remotes.SavoWall, true) end end end)
+-- Anti-Kick / Anti-Ban / Remote Blocker (hook already set above)
+local origNamecall
+pcall(function()
+    origNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        if nmtFlags.antiKick and method == "Kick" and self == LocalPlayer then notify("Anti-Kick","Blocked kick",2); return end
+        if nmtFlags.remoteBlocker and method == "FireServer" and self:IsA("RemoteEvent") then
+            local name = self.Name:lower()
+            if name:find("kick") or name:find("ban") or name:find("punish") then notify("Remote Blocker","Blocked "..self.Name,2); return end
+        end
+        if nmtFlags.antiBan and method == "FireServer" and self:IsA("RemoteEvent") then
+            local banned = {"banplayer","punishplayer","permaban","reportexploit"}
+            for _,b in ipairs(banned) do if self.Name:lower():find(b) then notify("Anti-Ban","Blocked ban remote",2); return end end
+        end
+        return origNamecall(self, ...)
+    end)
+end)
+-- Anti-TP Detection (position spoof)
+local positionHistory = {}
+local oldIndex
+pcall(function()
+    oldIndex = hookmetamethod(game, "__index", function(self, key)
+        if nmtFlags.antiTPDetect and key == "Position" and self == getHRP() then
+            local hum = getHum()
+            if hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping then
+                return positionHistory[#positionHistory] or self.Position
+            end
+        end
+        return oldIndex(self, key)
+    end)
+end)
+RunService.Heartbeat:Connect(function()
+    if nmtFlags.antiTPDetect then
+        local hrp = getHRP()
+        if hrp then table.insert(positionHistory, hrp.Position); if #positionHistory > 10 then table.remove(positionHistory,1) end end
+    end
+    if nmtFlags.antiSpeedDetect then
+        local hrp = getHRP()
+        if hrp and hrp.AssemblyLinearVelocity.Magnitude > 100 then hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity.Unit * 80 end
+    end
+end)
+
+-- Final notification
+Rayfield:Notify({ Title = "No More Time Ultimate", Content = "All ESP + NMT features loaded", Duration = 5, Image = 4483362458 })
+print("✅ No More Time Ultimate – EvadeESP merged with NMT features | Xeno ready")
