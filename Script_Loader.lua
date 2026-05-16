@@ -9,6 +9,7 @@ local Scripts = {
 	{Name = "First Person Model", URL = "https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/first%20person%20model"},
 	{Name = "ThirdPerson Force", URL = "https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/ThirdPerson%20Force"},
 	{Name = "Vehicle Modifier", URL = "https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Vehiclemodifier.lua"},
+	{Name = "Zoom Script", URL = "https://raw.githubusercontent.com/ghost09lucasjr-lgtm/universal-script-centre/refs/heads/main/Zoom%20script."},
 }
 
 local LoadedScripts = {}
@@ -22,8 +23,8 @@ GUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 400, 0, 500)
-MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+MainFrame.Size = UDim2.new(0, 400, 0, 550)
+MainFrame.Position = UDim2.new(0.5, -200, 0.5, -275)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = GUI
@@ -55,7 +56,7 @@ Divider.Parent = MainFrame
 
 local ScriptList = Instance.new("Frame")
 ScriptList.Name = "ScriptList"
-ScriptList.Size = UDim2.new(1, -20, 0, 320)
+ScriptList.Size = UDim2.new(1, -20, 0, 360)
 ScriptList.Position = UDim2.new(0, 10, 0, 55)
 ScriptList.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
 ScriptList.BorderSizePixel = 0
